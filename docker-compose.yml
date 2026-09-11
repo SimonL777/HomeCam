@@ -1,0 +1,52 @@
+name: homecam
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.0
+    container_name: homecam-mediamtx
+    restart: unless-stopped
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: "${NAS_IP:?Set NAS_IP in .env}"
+      MTX_HLSCDNSECRET: "${HLS_CDN_SECRET:?Set HLS_CDN_SECRET in .env}"
+      MTX_AUTHINTERNALUSERS_0_USER: "${RTSP_PUBLISH_USER:?Set RTSP_PUBLISH_USER in .env}"
+      MTX_AUTHINTERNALUSERS_0_PASS: "${RTSP_PUBLISH_PASSWORD:?Set RTSP_PUBLISH_PASSWORD in .env}"
+      MTX_AUTHINTERNALUSERS_1_USER: "${WEB_USERNAME:?Set WEB_USERNAME in .env}"
+      MTX_AUTHINTERNALUSERS_1_PASS: "${WEB_PASSWORD:?Set WEB_PASSWORD in .env}"
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "8554:8554"       # Authenticated RTSP ingest and optional RTSP clients
+      - "8189:8189/udp"   # WebRTC media transport
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ./data/recordings:/var/lib/homecam/recordings
+
+  web:
+    build: ./app
+    container_name: homecam-web
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    environment:
+      PORT: "8080"
+      WEB_USERNAME: "${WEB_USERNAME:?Set WEB_USERNAME in .env}"
+      WEB_PASSWORD: "${WEB_PASSWORD:?Set WEB_PASSWORD in .env}"
+      CAMERA_ID: "camera-01"
+      CAMERA_NAME: "HomeCam Camera"
+      CAMERAS_JSON: '[{"id":"camera-01","name":"CAM 1","path":"camera-01","enabled":true},{"id":"camera-02","name":"CAM 2","path":"camera-02","enabled":false}]'
+      MEDIAMTX_API_URL: "http://mediamtx:9997"
+      MEDIAMTX_HLS_URL: "http://mediamtx:8888"
+      MEDIAMTX_WEBRTC_URL: "http://mediamtx:8889"
+      MEDIAMTX_READ_USER: "${WEB_USERNAME:?Set WEB_USERNAME in .env}"
+      MEDIAMTX_READ_PASSWORD: "${WEB_PASSWORD:?Set WEB_PASSWORD in .env}"
+      HLS_CDN_SECRET: "${HLS_CDN_SECRET:?Set HLS_CDN_SECRET in .env}"
+      RECORDINGS_ROOT: "/var/lib/homecam/recordings"
+      SETTINGS_FILE: "/var/lib/homecam/config/settings.json"
+      PLAYBACK_CACHE_ROOT: "/tmp/homecam-vod"
+      TZ: "${TZ:-UTC}"
+      PI_CONTROL_URL: "${PI_CONTROL_URL:-}"
+      PI_CONTROL_TOKEN: "${PI_CONTROL_TOKEN:-}"
+    ports:
+      - "${WEB_PORT:-8095}:8080"
+    volumes:
+      - ./data/recordings:/var/lib/homecam/recordings:ro
+      - ./data/config:/var/lib/homecam/config

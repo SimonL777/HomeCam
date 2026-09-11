@@ -1,0 +1,34 @@
+[Unit]
+Description=HomeCam USB camera RTSP publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homecam
+Group=homecam
+SupplementaryGroups=video
+EnvironmentFile=/etc/homecam/camera.env
+ExecStart=/usr/bin/ffmpeg -hide_banner -loglevel error -nostdin \
+  -thread_queue_size 512 \
+  -f v4l2 -channel 0 -input_format mjpeg -video_size ${VIDEO_SIZE} -framerate ${VIDEO_FPS} \
+  -i ${CAMERA_DEVICE} \
+  -an -c:v libx264 -preset veryfast -tune zerolatency \
+  -b:v ${VIDEO_BITRATE} -maxrate ${VIDEO_BITRATE} -bufsize 4000k \
+  -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p \
+  -f rtsp -rtsp_transport tcp rtsp://${MEDIA_USER}:${MEDIA_PASSWORD}@${MEDIA_SERVER}:${MEDIA_PORT}/${CAMERA_ID}
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

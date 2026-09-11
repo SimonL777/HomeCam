@@ -1,0 +1,60 @@
+logLevel: info
+
+authMethod: internal
+authInternalUsers:
+  # Compose overrides this user's credentials from RTSP_PUBLISH_*.
+  - user: publisher
+    pass: replace-me
+    ips: []
+    permissions:
+      - action: publish
+        path: '~^camera-[a-zA-Z0-9_-]+$'
+  # Compose overrides this user's credentials from WEB_*.
+  - user: viewer
+    pass: replace-me
+    ips: []
+    permissions:
+      - action: read
+        path: '~^camera-[a-zA-Z0-9_-]+$'
+      - action: playback
+        path: '~^camera-[a-zA-Z0-9_-]+$'
+  # The API is reachable only inside the MediaMTX container/network boundary.
+  - user: any
+    pass:
+    ips:
+      - 127.0.0.1/32
+      - ::1/128
+      - 172.16.0.0/12
+    permissions:
+      - action: api
+
+api: yes
+apiAddress: :9997
+
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+rtmp: no
+srt: no
+moq: no
+
+hls: yes
+hlsAddress: :8888
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcAdditionalHosts: []
+
+pathDefaults:
+  record: yes
+  recordPath: /var/lib/homecam/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordSegmentDuration: 1h
+  # HomeCam web enforces the selected retention value; this is the safety cap.
+  recordDeleteAfter: 8760h
+
+paths:
+  camera-01:
+    source: publisher
+    overridePublisher: no

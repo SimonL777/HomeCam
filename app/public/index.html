@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HomeCam // 家庭监控</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-line"><span class="brand-mark">HC</span><span class="eyebrow">NIGHT WATCH // HOME MONITOR</span></div>
+          <h1>HomeCam</h1>
+          <p class="subtitle" id="camera-name">CAM 1 // 摄像头</p>
+        </div>
+        <div class="status" id="status"><span class="dot"></span><span>CHECKING</span></div>
+      </header>
+
+      <nav class="tabs" aria-label="页面视图">
+        <button class="tab active" data-view="live" type="button">实时监控</button>
+        <button class="tab" data-view="history" type="button">历史录像</button>
+        <button class="tab" data-view="settings" type="button">配置</button>
+      </nav>
+
+      <section class="view active" id="view-live" aria-labelledby="live-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">LIVE FEED // 01</p>
+            <h2 id="live-title">实时监控</h2>
+          </div>
+          <label class="inline-control">机位 <select id="live-camera"></select></label>
+        </div>
+        <div class="viewer" aria-label="实时摄像头画面">
+          <div class="corner corner-tl"></div><div class="corner corner-tr"></div>
+          <div class="corner corner-bl"></div><div class="corner corner-br"></div>
+          <video id="preview" autoplay playsinline muted></video>
+          <div class="empty" id="empty-state">
+            <strong>NO SIGNAL</strong>
+            <span>等待该机位推流。</span>
+          </div>
+          <div class="viewer-hud"><span id="hud-camera">CAM 1</span><span>LOCAL // WEBRTC</span></div>
+        </div>
+        <div class="toolbar">
+          <span class="stream-meta" id="live-detail">局域网视频链路</span>
+          <div class="toolbar-actions"><span class="muted" id="last-update">--:--:--</span><button class="button secondary" id="connect" type="button">重新连接</button></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-history" aria-labelledby="history-title" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">ARCHIVE // PLAYBACK</p>
+            <h2 id="history-title">历史录像</h2>
+          </div>
+          <div class="history-filter">
+            <label for="recording-camera">机位</label><select id="recording-camera"></select>
+            <label for="recording-date">日期</label><input id="recording-date" type="date" />
+            <button class="button secondary" id="refresh-recordings" type="button">刷新</button>
+          </div>
+        </div>
+        <div class="history-layout">
+          <div class="recording-list" id="recording-list" aria-live="polite"><p class="muted empty-list">选择日期后加载录像。</p></div>
+          <div class="playback-panel">
+            <video id="history-video" controls playsinline muted preload="none"></video>
+            <div class="playback-empty" id="playback-empty"><strong>SELECT RECORDING</strong><span>选择左侧录像片段开始在线播放。</span><button class="button secondary" id="retry-playback" type="button" hidden>重试播放</button></div>
+            <div class="playback-footer">
+              <p class="playback-caption" id="playback-caption">未选择录像</p>
+              <button class="button primary" id="download-recording" type="button" disabled>下载录像</button>
+            </div>
+            <div class="download-status" id="download-status" hidden>
+              <progress id="download-progress" max="100" value="0"></progress><span id="download-percent">0%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">PROFILE // SYSTEM</p><h2 id="settings-title">配置</h2></div>
+          <span class="muted" id="settings-state">读取中</span>
+        </div>
+        <section class="settings-section" aria-labelledby="storage-title">
+          <div class="settings-section-heading"><div><p class="eyebrow">NAS // DOCKER</p><h3 id="storage-title">存储策略</h3></div><span class="section-tag">GLOBAL</span></div>
+          <form class="storage-form" id="storage-form">
+            <div><label for="retention-days">历史录像保留天数</label><p>整数范围 1 到 365 天，保存后立即执行一次清理。</p></div>
+            <div class="input-with-unit"><input id="retention-days" name="retentionDays" type="number" min="1" max="365" step="1" required /><span>天</span></div>
+            <button class="button primary" type="submit">保存存储配置</button>
+          </form>
+          <p class="form-message" id="storage-message" role="status"></p>
+        </section>
+        <section class="settings-section" aria-labelledby="camera-settings-title">
+          <div class="settings-section-heading"><div><p class="eyebrow">CAMERA // INPUT</p><h3 id="camera-settings-title">机位参数</h3></div><span class="section-tag">PER CAMERA</span></div>
+          <form class="camera-form" id="camera-form">
+            <label>机位<select id="settings-camera" name="cameraId"></select></label>
+            <label>分辨率<select id="resolution" name="resolution"></select></label>
+            <label>帧率<select id="fps" name="fps"></select></label>
+            <label>码率<select id="bitrate" name="bitrate"></select></label>
+            <button class="button primary" type="submit">保存机位配置</button>
+          </form>
+          <p class="form-message" id="camera-message" role="status"></p>
+          <p class="config-note" id="config-note"></p>
+        </section>
+      </section>
+    </main>
+    <script src="/vendor/hls.min.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

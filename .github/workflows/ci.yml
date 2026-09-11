@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install system test dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg shellcheck
+      - name: Run Node.js tests
+        working-directory: app
+        run: npm test
+      - name: Check JavaScript syntax
+        working-directory: app
+        run: npm run check
+      - name: Check shell scripts
+        run: shellcheck pi/install.sh pi/install-control.sh scripts/check-stack.sh app/docker-entrypoint.sh
+      - name: Check Python syntax
+        env:
+          PYTHONPYCACHEPREFIX: /tmp/homecam-pycache
+        run: python3 -m py_compile pi/homecam-control.py
+      - name: Validate Docker Compose configuration
+        run: cp .env.example .env && docker compose config --quiet
+      - name: Validate MediaMTX configuration
+        run: |
+          docker run --rm \
+            -e MTX_WEBRTCADDITIONALHOSTS=192.168.50.10 \
+            -e MTX_HLSCDNSECRET=test-internal-secret \
+            -e MTX_AUTHINTERNALUSERS_0_USER=camera-publisher \
+            -e MTX_AUTHINTERNALUSERS_0_PASS=test-publisher-password \
+            -e MTX_AUTHINTERNALUSERS_1_USER=homecam \
+            -e MTX_AUTHINTERNALUSERS_1_PASS=test-viewer-password \
+            -v "$PWD/mediamtx/mediamtx.yml:/tmp/mediamtx.yml:ro" \
+            bluenviron/mediamtx:1.21.0 \
+            --validate-conf=/tmp/mediamtx.yml

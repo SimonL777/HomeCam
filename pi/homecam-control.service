@@ -1,0 +1,25 @@
+[Unit]
+Description=HomeCam camera settings controller
+After=network-online.target homecam-camera.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/homecam/control.env
+ExecStart=/usr/bin/python3 /usr/local/lib/homecam/homecam-control.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/etc/homecam
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
