@@ -1,29 +1,49 @@
 # HomeCam
 
-HomeCam is a self-hosted home camera stack for a Raspberry Pi USB camera and a
-Docker-capable NAS or Linux server. The Raspberry Pi publishes H.264 over RTSP,
-MediaMTX records the stream, and a small web application provides live view,
-recording playback, downloads, retention settings, and optional camera control.
+**Your camera. Your NAS. Your footage.**
+
+HomeCam turns a Raspberry Pi USB camera and a Docker-capable NAS or Linux
+server into a private, self-hosted video station. Watch live, revisit
+recordings, and tune capture settings from one browser dashboard. No cloud
+account or subscription is required to run it.
+
+`USB CAMERA` → `PI / FFMPEG` → `RTSP` → `NAS / MEDIAMTX` → `BROWSER`
+
+[![CI](https://github.com/SimonL777/HomeCam/actions/workflows/ci.yml/badge.svg)](https://github.com/SimonL777/HomeCam/actions/workflows/ci.yml)
+[Quick start](#server-setup) · [Architecture](#architecture) · [Security](#security-boundary)
+
+![HomeCam live dashboard showing a synthetic test signal](docs/screenshots/dashboard-demo.png)
+
+*Live-view UI preview. The color bars are a synthetic test signal, not camera footage.*
+
+## Why HomeCam
+
+- **Keep the recording where you own it.** MediaMTX writes fMP4 files directly
+  to server storage; the Pi does not need a recording disk.
+- **Go live or go back.** WebRTC serves low-latency local viewing, same-origin
+  HLS handles reverse-proxy access, and historical recordings get a seekable
+  HLS playback timeline without changing the original MP4.
+- **Keep the stack small.** FFmpeg and systemd on the Pi, MediaMTX and a
+  dependency-light Node.js dashboard on the server. The optional controller
+  applies camera profiles from the UI.
+
+## Interface
+
+The screenshots below use fictional recording metadata and no private video.
+They show the actual frontend with browser-only demo data, not a live camera
+or a verified playback session.
+
+| Recording browser | Capture and retention settings |
+|---|---|
+| [![HomeCam recording browser with synthetic entries](docs/screenshots/history-demo.png)](docs/screenshots/history-demo.png) | [![HomeCam capture and retention settings](docs/screenshots/settings-demo.png)](docs/screenshots/settings-demo.png) |
+
+## Security boundary
 
 > [!WARNING]
 > HomeCam handles private video. It authenticates the web dashboard and RTSP
 > publisher, but it does not terminate TLS. Keep it on a trusted LAN or VPN, or
 > place the dashboard behind an HTTPS reverse proxy. Do not expose its ports
 > directly to the public internet.
-
-## Features
-
-- Raspberry Pi USB camera publisher managed by systemd.
-- RTSP ingest, WebRTC live view, HLS fallback, and fMP4 recording through
-  MediaMTX.
-- Browser dashboard for live video, historical playback, original-file
-  downloads, and retention settings.
-- Read-only recording mount in the web container.
-- Seekable HLS VOD snapshots for recordings that are still being written.
-- Bounded 3 GiB playback cache with serialized conversion and idle cleanup.
-- Optional token-protected Raspberry Pi settings controller.
-- HTTP Basic authentication for the dashboard and separate RTSP publisher
-  credentials.
 
 ## Architecture
 
