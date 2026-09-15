@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HomeCam // 家庭监控</title>
+    <title>HomeCam AI // Private Runtime</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -20,6 +21,7 @@
       <nav class="tabs" aria-label="页面视图">
         <button class="tab active" data-view="live" type="button">实时监控</button>
         <button class="tab" data-view="history" type="button">历史录像</button>
+        <button class="tab" data-view="ai" type="button">AI Runtime</button>
         <button class="tab" data-view="settings" type="button">配置</button>
       </nav>
 
@@ -73,6 +75,71 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <section class="view" id="view-ai" aria-labelledby="ai-title" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">CONTROL PLANE // INFERENCE</p>
+            <h2 id="ai-title">AI Runtime</h2>
+          </div>
+          <div class="ai-heading-actions">
+            <span class="ai-refresh-state" id="ai-refresh-state">SYNCING</span>
+            <button class="button secondary" id="refresh-ai" type="button" aria-label="刷新 AI Runtime">刷新</button>
+          </div>
+        </div>
+
+        <div class="metric-strip" aria-label="AI Runtime 指标">
+          <div class="metric"><span>WORKERS ONLINE</span><strong id="metric-workers">--</strong><small id="metric-workers-offline">-- offline</small></div>
+          <div class="metric"><span>QUEUE DEPTH</span><strong id="metric-queue">--</strong><small id="metric-leased">-- leased</small></div>
+          <div class="metric"><span>AVG INFERENCE</span><strong id="metric-latency">--</strong><small id="metric-queue-time">-- queue</small></div>
+          <div class="metric"><span>FALLBACK / RETRY</span><strong id="metric-fallback">--</strong><small id="metric-cost">-- cost</small></div>
+        </div>
+
+        <div class="ai-layout">
+          <section class="runtime-section" aria-labelledby="workers-title">
+            <div class="runtime-heading"><div><p class="eyebrow">CAPABILITY REGISTRY</p><h3 id="workers-title">Workers</h3></div><span class="section-tag">HEARTBEAT</span></div>
+            <div class="worker-list" id="worker-list"><p class="muted">正在读取 Worker Registry。</p></div>
+          </section>
+
+          <section class="runtime-section" aria-labelledby="dispatch-title">
+            <div class="runtime-heading"><div><p class="eyebrow">POLICY ROUTER</p><h3 id="dispatch-title">Dispatch synthetic event</h3></div><span class="section-tag amber">PRIVACY FIRST</span></div>
+            <form class="dispatch-form" id="dispatch-form">
+              <label>任务类型<select id="ai-task" name="taskType">
+                <option value="person-detection">Person detection</option>
+                <option value="face-identity">Face identity</option>
+                <option value="event-classification">Event classification</option>
+                <option value="scene-description">Scene description</option>
+              </select></label>
+              <label>隐私等级<select id="ai-privacy" name="privacyLevel">
+                <option value="local-only">Local only</option>
+                <option value="metadata-only">Metadata only</option>
+                <option value="external-allowed">External allowed</option>
+              </select></label>
+              <label>首选算力<select id="ai-provider" name="preferredProvider">
+                <option value="">Policy decides</option>
+                <option value="nas-cpu">NAS CPU</option>
+                <option value="home-gpu">Home GPU</option>
+                <option value="external">External</option>
+              </select></label>
+              <button class="button primary" type="submit">提交任务</button>
+            </form>
+            <p class="form-message" id="dispatch-message" role="status"></p>
+            <div class="policy-flow" aria-label="推理路由策略">
+              <span>INGEST</span><i></i><span>POLICY</span><i></i><span>LEASE</span><i></i><span>PROVIDER</span>
+            </div>
+          </section>
+        </div>
+
+        <section class="runtime-section job-section" aria-labelledby="jobs-title">
+          <div class="runtime-heading"><div><p class="eyebrow">DURABLE QUEUE // SQLITE WAL</p><h3 id="jobs-title">Recent inference jobs</h3></div><span class="section-tag">LEASE + RETRY</span></div>
+          <div class="job-table-wrap">
+            <table class="job-table">
+              <thead><tr><th>State</th><th>Task</th><th>Privacy</th><th>Provider</th><th>Attempts</th><th>Created</th></tr></thead>
+              <tbody id="job-list"><tr><td colspan="6" class="muted">正在读取持久队列。</td></tr></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="view" id="view-settings" aria-labelledby="settings-title" hidden>

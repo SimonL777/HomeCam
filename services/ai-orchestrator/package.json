@@ -1,0 +1,18 @@
+{
+  "name": "homecam-ai-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "worker": "node src/worker.js",
+    "demo": "node scripts/demo.mjs",
+    "demo:failover": "sh scripts/run-failover-demo.sh",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/*.js && node --check scripts/*.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

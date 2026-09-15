@@ -8,6 +8,8 @@ FFmpeg and FFprobe are required for recording playback tests.
 ```bash
 cd app
 npm test
+cd ../services/ai-orchestrator
+npm test
 ```
 
 Before submitting a pull request, also run:
@@ -15,6 +17,7 @@ Before submitting a pull request, also run:
 ```bash
 node --check app/server.js
 node --check app/public/app.js
+cd services/ai-orchestrator && npm run check && cd ../..
 bash -n pi/install.sh pi/install-control.sh scripts/check-stack.sh
 PYTHONPYCACHEPREFIX=/tmp/homecam-pycache python3 -m py_compile pi/homecam-control.py
 docker compose config

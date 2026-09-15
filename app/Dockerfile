@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json ./
 COPY server.js ./
 COPY basic-auth.js ./
+COPY ai-proxy.js ./
 COPY hls-proxy.js ./
 COPY webrtc-proxy.js ./
 COPY recording-playback.js ./

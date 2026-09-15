@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:
 import { createServer } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { isBasicAuthorized } from './basic-auth.js';
+import { proxyAiJson } from './ai-proxy.js';
 import { proxyHls } from './hls-proxy.js';
 import { proxyWhep } from './webrtc-proxy.js';
 import { RecordingPlayback } from './recording-playback.js';
@@ -27,6 +28,8 @@ const timezone = process.env.TZ || 'UTC';
 const webUsername = process.env.WEB_USERNAME || '';
 const webPassword = process.env.WEB_PASSWORD || '';
 const allowInsecureNoAuth = process.env.ALLOW_INSECURE_NO_AUTH === 'true';
+const aiOrchestratorUrl = (process.env.AI_ORCHESTRATOR_URL || '').replace(/\/$/, '');
+const aiOrchestratorToken = process.env.AI_ORCHESTRATOR_TOKEN || '';
 
 if ((!webUsername || !webPassword) && !allowInsecureNoAuth) {
   throw new Error('WEB_USERNAME and WEB_PASSWORD are required');
@@ -465,6 +468,21 @@ const server = createServer(async (request, response) => {
         cameras: cameras.map(publicCameraSettings),
         options: settingsOptions,
         controlConfigured: Boolean(piControlUrl && piControlToken)
+      });
+    }
+    if (request.method === 'GET' && requestUrl.pathname === '/api/ai/overview') {
+      return proxyAiJson(request, response, {
+        baseUrl: aiOrchestratorUrl,
+        token: aiOrchestratorToken,
+        path: '/v1/overview'
+      });
+    }
+    if (request.method === 'POST' && requestUrl.pathname === '/api/ai/jobs') {
+      return proxyAiJson(request, response, {
+        baseUrl: aiOrchestratorUrl,
+        token: aiOrchestratorToken,
+        path: '/v1/jobs',
+        body: await readBody(request)
       });
     }
     if (request.method === 'PUT' && (requestUrl.pathname === '/api/settings/storage' || requestUrl.pathname === '/api/settings')) {

@@ -21,11 +21,17 @@ jobs:
       - name: Run Node.js tests
         working-directory: app
         run: npm test
+      - name: Run AI orchestrator tests
+        working-directory: services/ai-orchestrator
+        run: npm test
       - name: Check JavaScript syntax
         working-directory: app
         run: npm run check
+      - name: Check AI orchestrator syntax
+        working-directory: services/ai-orchestrator
+        run: npm run check
       - name: Check shell scripts
-        run: shellcheck pi/install.sh pi/install-control.sh scripts/check-stack.sh app/docker-entrypoint.sh
+        run: shellcheck pi/install.sh pi/install-control.sh scripts/check-stack.sh app/docker-entrypoint.sh services/ai-orchestrator/docker-entrypoint.sh
       - name: Check Python syntax
         env:
           PYTHONPYCACHEPREFIX: /tmp/homecam-pycache

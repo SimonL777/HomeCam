@@ -1,11 +1,10 @@
-# HomeCam Architecture
+# HomeCam AI Architecture
 
 ## Goal
 
-HomeCam provides a small, self-hosted video monitoring stack built from common
-hardware and open media protocols. The capture device publishes video, while a
-separate server owns live playback, recording storage, retention, and the web
-interface.
+HomeCam provides a self-hosted video monitoring stack and a separate AI control
+plane for heterogeneous inference. Capture, media transport, web access,
+scheduling, and model execution stay behind explicit component boundaries.
 
 ## Components
 
@@ -16,10 +15,15 @@ interface.
 | MediaMTX | Authenticates ingest, serves live media, and writes fMP4 recordings. |
 | HomeCam web | Authenticates users and provides live view, playback, downloads, and settings. |
 | Optional Pi controller | Applies a validated capture profile and restarts the publisher. |
+| AI orchestrator | Persists inference jobs, applies privacy/routing policy, owns leases, and exports metrics. |
+| AI worker | Advertises task/model capabilities and executes a leased job using a pluggable provider. |
 
 ```text
 Camera -> Pi/FFmpeg -> RTSP -> MediaMTX -> WebRTC/HLS -> Browser
                                       `-> fMP4 recordings
+                                      `-> event sampler (planned) -> AI orchestrator
+HomeCam web -> authenticated internal API -> AI orchestrator
+AI orchestrator -> NAS CPU / intermittent GPU / optional external provider
 ```
 
 ## Trust boundaries
@@ -31,6 +35,10 @@ Camera -> Pi/FFmpeg -> RTSP -> MediaMTX -> WebRTC/HLS -> Browser
 - Recording files are read-only inside the web container.
 - The optional Pi controller requires a bearer token and can restrict requests
   to one server IP.
+- The AI API uses a separate bearer token. The browser reaches it only through
+  the authenticated HomeCam web gateway and never receives that token.
+- Face identity and person detection are blocked from external providers by
+  task policy and privacy validation.
 - HomeCam does not provide TLS. Deploy it on a trusted LAN or VPN, or behind an
   HTTPS reverse proxy.
 
@@ -60,7 +68,25 @@ This process:
 |---|---|---|
 | `data/recordings` | MediaMTX fMP4 recordings | Read-only |
 | `data/config/settings.json` | Retention and camera profile settings | Read-write |
+| `data/ai/orchestrator.db` | AI jobs, attempts, workers, leases, and metrics | AI orchestrator only |
 | `/tmp/homecam-vod` | Temporary HLS playback cache | Read-write, ephemeral |
+
+## AI job lifecycle
+
+```text
+queued -> leased -> succeeded
+   ^         |
+   |         +-> expired/failed -> queued (retry budget remains)
+   |                              `-> dead-letter (budget exhausted)
+   `---------------- exponential retry delay
+```
+
+Worker status is derived from heartbeat age. Job completion requires both the
+worker ID and the opaque lease token, preventing stale attempts from committing
+after another worker has taken ownership.
+
+See [docs/architecture/ai-runtime.md](docs/architecture/ai-runtime.md) for the
+routing contract and operational scenarios.
 
 ## Verification standard
 
@@ -78,5 +104,6 @@ Playback verification should confirm:
 1. Multiple independently authenticated publishers.
 2. Reverse-proxy examples for common self-hosted environments.
 3. Camera offline, recording failure, and storage capacity alerts.
-4. Optional motion detection and event indexing.
-5. Backup and restore tooling for settings.
+4. Media event sampler plus real local detection and embedding providers.
+5. Encrypted external provider adapters with redaction and explicit consent.
+6. Backup and restore tooling for settings and AI control-plane state.

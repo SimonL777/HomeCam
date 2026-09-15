@@ -26,6 +26,7 @@ services:
     restart: unless-stopped
     depends_on:
       - mediamtx
+      - ai-orchestrator
     environment:
       PORT: "8080"
       WEB_USERNAME: "${WEB_USERNAME:?Set WEB_USERNAME in .env}"
@@ -45,8 +46,100 @@ services:
       TZ: "${TZ:-UTC}"
       PI_CONTROL_URL: "${PI_CONTROL_URL:-}"
       PI_CONTROL_TOKEN: "${PI_CONTROL_TOKEN:-}"
+      AI_ORCHESTRATOR_URL: "http://ai-orchestrator:8090"
+      AI_ORCHESTRATOR_TOKEN: "${AI_ORCHESTRATOR_TOKEN:?Set AI_ORCHESTRATOR_TOKEN in .env}"
     ports:
       - "${WEB_PORT:-8095}:8080"
     volumes:
       - ./data/recordings:/var/lib/homecam/recordings:ro
       - ./data/config:/var/lib/homecam/config
+
+  ai-orchestrator:
+    build: ./services/ai-orchestrator
+    container_name: homecam-ai-orchestrator
+    restart: unless-stopped
+    environment:
+      PORT: "8090"
+      AI_DATABASE_PATH: "/var/lib/homecam-ai/orchestrator.db"
+      AI_ORCHESTRATOR_TOKEN: "${AI_ORCHESTRATOR_TOKEN:?Set AI_ORCHESTRATOR_TOKEN in .env}"
+      AI_LEASE_MS: "${AI_LEASE_MS:-30000}"
+      AI_WORKER_OFFLINE_MS: "${AI_WORKER_OFFLINE_MS:-30000}"
+      AI_RETRY_BASE_MS: "${AI_RETRY_BASE_MS:-1000}"
+      TZ: "${TZ:-UTC}"
+    ports:
+      - "${AI_BIND_ADDRESS:-127.0.0.1}:${AI_PORT:-8090}:8090"
+    volumes:
+      - ./data/ai:/var/lib/homecam-ai
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  ai-worker-nas:
+    profiles: ["ai-demo"]
+    build: ./services/ai-orchestrator
+    container_name: homecam-ai-worker-nas
+    restart: unless-stopped
+    depends_on:
+      ai-orchestrator:
+        condition: service_healthy
+    command: ["node", "src/worker.js"]
+    environment:
+      AI_ORCHESTRATOR_URL: "http://ai-orchestrator:8090"
+      AI_ORCHESTRATOR_TOKEN: "${AI_ORCHESTRATOR_TOKEN:?Set AI_ORCHESTRATOR_TOKEN in .env}"
+      WORKER_ID: "nas-cpu-01"
+      WORKER_NAME: "NAS CPU // Synthetic"
+      WORKER_PROVIDER_CLASS: "nas-cpu"
+      WORKER_MODEL_VERSION: "synthetic-cpu-v1"
+      WORKER_TASK_TYPES: "person-detection,event-classification"
+      WORKER_MAX_CONCURRENCY: "1"
+      WORKER_MEMORY_MB: "2048"
+      WORKER_ESTIMATED_LATENCY_MS: "700"
+      WORKER_SYNTHETIC_LATENCY_MS: "700"
+
+  ai-worker-gpu-demo:
+    profiles: ["ai-demo"]
+    build: ./services/ai-orchestrator
+    container_name: homecam-ai-worker-gpu-demo
+    restart: unless-stopped
+    depends_on:
+      ai-orchestrator:
+        condition: service_healthy
+    command: ["node", "src/worker.js"]
+    environment:
+      AI_ORCHESTRATOR_URL: "http://ai-orchestrator:8090"
+      AI_ORCHESTRATOR_TOKEN: "${AI_ORCHESTRATOR_TOKEN:?Set AI_ORCHESTRATOR_TOKEN in .env}"
+      WORKER_ID: "home-gpu-demo-01"
+      WORKER_NAME: "RTX 4070S // Synthetic"
+      WORKER_PROVIDER_CLASS: "home-gpu"
+      WORKER_MODEL_VERSION: "synthetic-gpu-v1"
+      WORKER_TASK_TYPES: "person-detection,face-identity,scene-description,event-classification"
+      WORKER_MAX_CONCURRENCY: "2"
+      WORKER_MEMORY_MB: "12288"
+      WORKER_ESTIMATED_LATENCY_MS: "250"
+      WORKER_SYNTHETIC_LATENCY_MS: "250"
+
+  ai-worker-external-demo:
+    profiles: ["ai-demo"]
+    build: ./services/ai-orchestrator
+    container_name: homecam-ai-worker-external-demo
+    restart: unless-stopped
+    depends_on:
+      ai-orchestrator:
+        condition: service_healthy
+    command: ["node", "src/worker.js"]
+    environment:
+      AI_ORCHESTRATOR_URL: "http://ai-orchestrator:8090"
+      AI_ORCHESTRATOR_TOKEN: "${AI_ORCHESTRATOR_TOKEN:?Set AI_ORCHESTRATOR_TOKEN in .env}"
+      WORKER_ID: "external-demo-01"
+      WORKER_NAME: "External Provider // Synthetic"
+      WORKER_PROVIDER_CLASS: "external"
+      WORKER_MODEL_VERSION: "synthetic-external-v1"
+      WORKER_TASK_TYPES: "scene-description,event-classification"
+      WORKER_MAX_CONCURRENCY: "4"
+      WORKER_MEMORY_MB: "0"
+      WORKER_ESTIMATED_LATENCY_MS: "450"
+      WORKER_SYNTHETIC_LATENCY_MS: "450"
+      WORKER_COST_PER_JOB_MICROUSD: "1200"

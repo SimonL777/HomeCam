@@ -1,109 +1,130 @@
-# HomeCam
+# HomeCam AI
 
-**Your camera. Your NAS. Your footage.**
+**Private video. Heterogeneous inference. One control plane.**
 
-HomeCam turns a Raspberry Pi USB camera and a Docker-capable NAS or Linux
-server into a private, self-hosted video station. Watch live, revisit
-recordings, and tune capture settings from one browser dashboard. No cloud
-account or subscription is required to run it.
+HomeCam AI is a self-hosted video platform and a runnable AI infrastructure
+lab for edge devices, an always-on NAS, intermittent home GPUs, and optional
+external model providers.
 
-`USB CAMERA` → `PI / FFMPEG` → `RTSP` → `NAS / MEDIAMTX` → `BROWSER`
+The Raspberry Pi stays focused on capture. MediaMTX owns transport and
+recording. A separate AI control plane owns durable jobs, worker discovery,
+policy routing, leases, retries, fallback, cost tracking, and privacy rules.
 
 [![CI](https://github.com/SimonL777/HomeCam/actions/workflows/ci.yml/badge.svg)](https://github.com/SimonL777/HomeCam/actions/workflows/ci.yml)
-[Quick start](#server-setup) · [Architecture](#architecture) · [Security](#security-boundary)
+[Quick start](#quick-start) · [Run the failover demo](#run-the-failover-demo) · [AI architecture](docs/architecture/ai-runtime.md) · [Security](#security-boundary)
 
-![HomeCam live dashboard showing a synthetic test signal](docs/screenshots/dashboard-demo.png)
+![HomeCam AI Runtime dashboard with synthetic workers and inference jobs](docs/screenshots/ai-runtime-demo.png)
 
-*Live-view UI preview. The color bars are a synthetic test signal, not camera footage.*
+*The UI and all repository screenshots use synthetic data. No private camera
+frames, addresses, tokens, or household metadata are included.*
 
-## Why HomeCam
+## Why this is AI infrastructure
 
-- **Keep the recording where you own it.** MediaMTX writes fMP4 files directly
-  to server storage; the Pi does not need a recording disk.
-- **Go live or go back.** WebRTC serves low-latency local viewing, same-origin
-  HLS handles reverse-proxy access, and historical recordings get a seekable
-  HLS playback timeline without changing the original MP4.
-- **Keep the stack small.** FFmpeg and systemd on the Pi, MediaMTX and a
-  dependency-light Node.js dashboard on the server. The optional controller
-  applies camera profiles from the UI.
+HomeCam AI treats models and compute as replaceable providers behind a control
+plane instead of embedding inference in the web server.
 
-## Interface
+- **Durable inference queue:** SQLite WAL persists jobs, attempts, results, and
+  lease state across process restarts.
+- **Ephemeral worker lifecycle:** workers register capabilities, report model
+  versions and memory, send heartbeats, and become offline automatically.
+- **Lease-based execution:** only the current lease owner can complete a job;
+  abandoned work returns to the queue with exponential retry delay.
+- **Policy routing:** provider choice considers task support, privacy level,
+  preferred compute, online capacity, deadline, latency, and budget.
+- **Privacy as code:** face identity and raw person detection cannot route to an
+  external provider. Tests enforce the rule at both job and worker boundaries.
+- **Observable decisions:** queue time, inference latency, provider class,
+  model version, attempts, fallback, and reported cost are exposed as JSON and
+  Prometheus metrics.
+- **Idempotent ingestion:** an `Idempotency-Key` prevents duplicate event jobs
+  without silently accepting a different request body.
 
-The screenshots below use fictional recording metadata and no private video.
-They show the actual frontend with browser-only demo data, not a live camera
-or a verified playback session.
+## Topology
 
-| Recording browser | Capture and retention settings |
-|---|---|
-| [![HomeCam recording browser with synthetic entries](docs/screenshots/history-demo.png)](docs/screenshots/history-demo.png) | [![HomeCam capture and retention settings](docs/screenshots/settings-demo.png)](docs/screenshots/settings-demo.png) |
-
-## Security boundary
-
-> [!WARNING]
-> HomeCam handles private video. It authenticates the web dashboard and RTSP
-> publisher, but it does not terminate TLS. Keep it on a trusted LAN or VPN, or
-> place the dashboard behind an HTTPS reverse proxy. Do not expose its ports
-> directly to the public internet.
-
-## Architecture
-
-```text
-USB camera
-  -> Raspberry Pi / FFmpeg / systemd
-  -> authenticated RTSP over the home network
-  -> MediaMTX on a NAS or Linux server
-     -> fMP4 recordings on server storage
-     -> WebRTC UDP for low-latency live view
-     -> internal HLS for remote/reverse-proxy playback
-  -> HomeCam web dashboard
+```mermaid
+flowchart LR
+    CAM[USB Camera] --> PI[Raspberry Pi<br/>FFmpeg capture]
+    PI -->|Authenticated RTSP| MTX[MediaMTX on NAS]
+    MTX -->|fMP4| DISK[(Recordings)]
+    MTX -->|WebRTC / HLS| WEB[HomeCam Web]
+    MTX -. sampled frames / events .-> ORCH[AI Orchestrator<br/>SQLite WAL + Policy Router]
+    WEB -->|server-side token| ORCH
+    ORCH --> NAS[NAS CPU Worker<br/>always on]
+    ORCH --> GPU[Home GPU Worker<br/>intermittent]
+    ORCH -->|only when policy allows| EXT[External Provider]
 ```
 
-See [PROJECT.md](./PROJECT.md) for the component and security boundaries.
+The media plane and AI control plane are independent. `app/server.js` remains
+the authenticated video gateway; it does not load models or execute inference.
 
-## Requirements
+## Privacy routing
 
-Server:
+| Task | NAS CPU | Home GPU | External |
+|---|---:|---:|---:|
+| Person detection | Yes | Yes | **Blocked** |
+| Face identity | Yes | Yes | **Blocked** |
+| Scene description | Supported | Preferred | Opt-in only |
+| Metadata event classification | Yes | Yes | Opt-in / metadata only |
 
-- Docker Engine with Docker Compose v2.
-- A writable location for recordings and settings.
-- An IP address reachable by the Raspberry Pi and viewing devices.
+External routing requires both a task policy that allows it and a compatible
+privacy level. A preferred provider is a hint, never a policy bypass.
 
-Raspberry Pi:
+## Run the failover demo
 
-- Raspberry Pi OS or another systemd-based Debian derivative.
-- FFmpeg and `v4l2-ctl` (installed by `pi/install.sh`).
-- A V4L2-compatible USB camera.
+Node.js 22.13 or later and `curl` are enough. No camera, Docker, GPU, model, or
+external API token is required.
 
-## Server setup
+```bash
+cd services/ai-orchestrator
+npm run demo:failover
+```
 
-Create the local configuration and replace every `replace-with-*` value:
+The deterministic scenario:
+
+1. Registers a synthetic RTX 4070S worker and external provider.
+2. Queues an external-allowed scene-description job with GPU preference.
+3. Lets the GPU claim the job and disappear without completing the lease.
+4. Recovers the abandoned job and routes attempt two to the external provider.
+5. Proves that an external face-identity request is rejected with HTTP 422.
+6. Prints the final job state and queue, retry, fallback, latency, and cost metrics.
+
+## Quick start
+
+Create local configuration and replace every `replace-with-*` value:
 
 ```bash
 cp .env.example .env
-# Run this once for each password or secret in .env.
 openssl rand -hex 32
 nano .env
-mkdir -p data/recordings data/config
+mkdir -p data/recordings data/config data/ai
 docker compose config
 docker compose up -d --build
 docker compose logs -f
 ```
 
-Open `http://SERVER_IP:8095` and enter the `WEB_USERNAME` and `WEB_PASSWORD`
-from `.env`. Change `WEB_PORT` if another service already uses port `8095`.
+Open `http://SERVER_IP:8095` and authenticate with `WEB_USERNAME` and
+`WEB_PASSWORD`. The default stack starts:
 
-The default Compose file exposes only:
+- MediaMTX for authenticated RTSP, recording, WebRTC, and HLS;
+- the HomeCam web dashboard;
+- the AI orchestrator with persistent SQLite storage.
 
-- `8095/tcp`: authenticated HomeCam dashboard.
-- `8554/tcp`: authenticated RTSP ingest and optional RTSP clients.
-- `8189/udp`: WebRTC media transport.
+Start the optional synthetic NAS, GPU, and external providers:
 
-MediaMTX HLS and WHEP HTTP endpoints remain inside the Compose network and are
-proxied by the authenticated web application.
+```bash
+docker compose --profile ai-demo up -d --build
+cd services/ai-orchestrator
+AI_ORCHESTRATOR_TOKEN="$(sed -n 's/^AI_ORCHESTRATOR_TOKEN=//p' ../../.env)" npm run demo
+```
+
+The AI API binds to `127.0.0.1:8090` by default. To connect a worker from a
+different machine, bind it to a trusted LAN or VPN address with
+`AI_BIND_ADDRESS`, then restrict that port with a firewall. Never expose it
+directly to the internet.
 
 ## Raspberry Pi publisher
 
-Inspect the connected camera first:
+Inspect the connected camera:
 
 ```bash
 v4l2-ctl --list-devices
@@ -120,68 +141,71 @@ sudo systemctl restart homecam-camera
 systemctl status homecam-camera
 ```
 
-Set `MEDIA_SERVER` to the server IP. Set `MEDIA_USER` and `MEDIA_PASSWORD` to
-the same values as `RTSP_PUBLISH_USER` and `RTSP_PUBLISH_PASSWORD` in the
-server `.env`. Use an alphanumeric or hexadecimal password so it is safe in an
-RTSP URL.
+Set `MEDIA_SERVER`, `MEDIA_USER`, and `MEDIA_PASSWORD` to the server and the
+matching `RTSP_PUBLISH_*` values. The optional `pi/install-control.sh` service
+allows validated capture profile changes from the dashboard.
 
-The default capture profile is MJPEG `1280x720` at 15 FPS. If the camera does
-not support MJPEG, update the systemd command to use a format reported by
-`v4l2-ctl`.
+## Interfaces
 
-## Optional camera controller
+| Live and recordings | Capture and retention |
+|---|---|
+| [![HomeCam live dashboard with synthetic signal](docs/screenshots/dashboard-demo.png)](docs/screenshots/dashboard-demo.png) | [![HomeCam settings with synthetic configuration](docs/screenshots/settings-demo.png)](docs/screenshots/settings-demo.png) |
+| [Recording browser](docs/screenshots/history-demo.png) | [AI Runtime](docs/screenshots/ai-runtime-demo.png) |
 
-The controller lets the dashboard change resolution, FPS, and bitrate on the
-publisher. Restrict it to the server IP during installation:
+## What is implemented
 
-```bash
-chmod +x pi/install-control.sh
-sudo HOMECAM_ALLOWED_HOST=SERVER_IP ./pi/install-control.sh
-```
+- Raspberry Pi FFmpeg capture and authenticated RTSP publishing.
+- MediaMTX live distribution and fMP4 recording.
+- Authenticated live view, recording browser, seekable HLS VOD, downloads, and
+  camera settings.
+- Independent AI orchestrator API and SQLite-backed queue.
+- Worker registration, capability discovery, heartbeat, liveness, leases,
+  retry, dead-letter state, fallback, deadline, and budget routing.
+- JSON overview and Prometheus metrics.
+- Synthetic providers, a generic Bearer-auth HTTP JSON provider adapter, and a
+  browser control-plane view.
 
-Copy the printed token into the server `.env` as `PI_CONTROL_TOKEN`, set
-`PI_CONTROL_URL=http://PI_IP:9110`, and recreate the web service. The token is
-shown only when first generated and is stored in `/etc/homecam/control.env`.
+## What is deliberately not claimed
 
-## Recordings and playback
+- The included workers return deterministic synthetic results; they do not run
+  YOLO, face embeddings, a VLM, or a hosted model API.
+- The media-to-event sampler and a production alert channel are not included.
+- External providers are disabled by default. The generic HTTP JSON adapter is
+  not a vendor-specific or production-certified integration, and HomeCam never
+  uploads recordings or frames without an external-allowed job.
+- Reported provider cost comes from worker metadata; it is not a billing source
+  of truth.
 
-Original recordings are stored under `data/recordings` and mounted read-only
-in the web container. Historical playback uses FFmpeg stream-copy to create
-temporary six-second HLS fragments without modifying the source MP4.
+These boundaries keep the infrastructure demonstrable without presenting a
+mock model as production AI. See [AI Runtime Architecture](docs/architecture/ai-runtime.md)
+for the provider contract and next implementation steps.
 
-The cache lives at `/tmp/homecam-vod` inside the web container, has a 3 GiB
-budget, and removes idle jobs after 30 minutes. Restarting the web container
-clears only this cache.
+## Security boundary
+
+> [!WARNING]
+> HomeCam handles private video. Use it on a trusted LAN or VPN, or behind an
+> authenticated HTTPS reverse proxy. The project does not terminate TLS. Do
+> not expose dashboard, RTSP, Pi control, or AI control-plane ports directly to
+> the public internet.
+
+- Dashboard users and RTSP publishers use separate credentials.
+- The browser never receives the MediaMTX or AI internal bearer tokens.
+- Recording files are read-only inside the web container.
+- AI provider access is deny-by-policy for identity and raw person detection.
+- Example data and screenshots are synthetic.
+
+See [SECURITY.md](SECURITY.md) and [PROJECT.md](PROJECT.md) for the complete
+trust boundary.
 
 ## Tests
 
-FFmpeg and FFprobe are required for the recording tests:
-
 ```bash
-cd app
-npm test
+cd app && npm test && npm run check
+cd ../services/ai-orchestrator && npm test && npm run check
 ```
 
-Additional local checks:
+The CI workflow also checks shell and Python syntax, validates Docker Compose,
+and validates the pinned MediaMTX configuration.
 
-```bash
-bash -n pi/install.sh pi/install-control.sh scripts/check-stack.sh
-PYTHONPYCACHEPREFIX=/tmp/homecam-pycache python3 -m py_compile pi/homecam-control.py
-docker compose config
-```
-
-## Current limits
-
-- One configured publishing path by default: `camera-01`.
-- No motion detection, notifications, or cloud storage.
-- TLS must be provided by a VPN or reverse proxy.
-- A network or server outage creates a recording gap; the Raspberry Pi does
-  not keep a local recording buffer.
-
-## Contributing and security
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting a change. Report
-security issues using the private process in [SECURITY.md](./SECURITY.md).
-
-HomeCam is licensed under the [Apache License 2.0](./LICENSE). Third-party
-components are listed in [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+HomeCam is licensed under the [Apache License 2.0](LICENSE). Third-party
+components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -24,6 +24,11 @@ const settingsState = document.querySelector('#settings-state');
 const storageMessage = document.querySelector('#storage-message');
 const cameraMessage = document.querySelector('#camera-message');
 const configNote = document.querySelector('#config-note');
+const aiRefreshState = document.querySelector('#ai-refresh-state');
+const workerList = document.querySelector('#worker-list');
+const jobList = document.querySelector('#job-list');
+const dispatchForm = document.querySelector('#dispatch-form');
+const dispatchMessage = document.querySelector('#dispatch-message');
 
 let config;
 let cameraList = [];
@@ -39,6 +44,7 @@ let activeView = 'live';
 let historyPlayer;
 let historyRequest;
 let historyVersion = 0;
+let aiRefreshInFlight = false;
 
 const formatBytes = (bytes) => {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -267,8 +273,150 @@ function activateView(viewName) {
     view.hidden = !active;
   });
   if (viewName === 'history') loadRecordings();
+  if (viewName === 'ai') loadAiOverview();
   if (viewName === 'settings') loadSettings();
 }
+
+function formatDuration(milliseconds) {
+  if (!Number.isFinite(milliseconds)) return '--';
+  if (milliseconds < 1000) return `${milliseconds} ms`;
+  return `${(milliseconds / 1000).toFixed(1)} s`;
+}
+
+function formatCost(microusd) {
+  if (!microusd) return '$0.0000';
+  return `$${(microusd / 1_000_000).toFixed(4)}`;
+}
+
+function renderWorkers(workers) {
+  workerList.replaceChildren();
+  if (!workers.length) {
+    const empty = document.createElement('p');
+    empty.className = 'muted';
+    empty.textContent = '尚无 Worker 注册。';
+    workerList.append(empty);
+    return;
+  }
+  workers.forEach((worker) => {
+    const row = document.createElement('div');
+    row.className = `worker-row ${worker.status}`;
+    const identity = document.createElement('div');
+    const name = document.createElement('strong');
+    const model = document.createElement('span');
+    name.textContent = worker.name;
+    model.textContent = worker.modelVersion;
+    identity.append(name, model);
+    const provider = document.createElement('span');
+    provider.className = `provider provider-${worker.providerClass}`;
+    provider.textContent = worker.providerClass;
+    const capabilities = document.createElement('span');
+    capabilities.className = 'worker-capabilities';
+    capabilities.textContent = worker.capabilities.taskTypes.join(' · ');
+    const load = document.createElement('span');
+    load.className = 'worker-load';
+    load.textContent = `${worker.currentLoad}/${worker.maxConcurrency} // ${worker.status}`;
+    row.append(identity, provider, capabilities, load);
+    workerList.append(row);
+  });
+}
+
+function renderJobs(jobs) {
+  jobList.replaceChildren();
+  if (!jobs.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 6;
+    cell.className = 'muted';
+    cell.textContent = '队列为空。';
+    row.append(cell);
+    jobList.append(row);
+    return;
+  }
+  jobs.forEach((job) => {
+    const row = document.createElement('tr');
+    const state = document.createElement('td');
+    const stateTag = document.createElement('span');
+    stateTag.className = `job-state state-${job.state}`;
+    stateTag.textContent = job.state;
+    state.append(stateTag);
+    const values = [
+      job.taskType,
+      job.privacyLevel,
+      job.providerClass || 'pending',
+      `${job.attempts}/${job.maxAttempts}`,
+      new Date(job.createdAt).toLocaleTimeString('zh-CN', { hour12: false })
+    ];
+    row.append(state, ...values.map((value) => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      return cell;
+    }));
+    jobList.append(row);
+  });
+}
+
+async function loadAiOverview() {
+  if (aiRefreshInFlight) return;
+  aiRefreshInFlight = true;
+  aiRefreshState.textContent = 'SYNCING';
+  try {
+    const overview = await getJson('/api/ai/overview');
+    const { metrics } = overview;
+    document.querySelector('#metric-workers').textContent = metrics.workers.online;
+    document.querySelector('#metric-workers-offline').textContent = `${metrics.workers.offline} offline`;
+    document.querySelector('#metric-queue').textContent = metrics.jobs.queued;
+    document.querySelector('#metric-leased').textContent = `${metrics.jobs.leased} leased`;
+    document.querySelector('#metric-latency').textContent = formatDuration(metrics.attempts.inferenceMsAvg);
+    document.querySelector('#metric-queue-time').textContent = `${formatDuration(metrics.attempts.queueMsAvg)} queue`;
+    document.querySelector('#metric-fallback').textContent = `${metrics.attempts.fallbackTotal} / ${metrics.attempts.retryTotal}`;
+    document.querySelector('#metric-cost').textContent = `${formatCost(metrics.attempts.costMicrousdTotal)} reported`;
+    renderWorkers(overview.workers || []);
+    renderJobs(overview.jobs || []);
+    aiRefreshState.textContent = `SYNCED ${new Date(overview.generatedAt).toLocaleTimeString('zh-CN', { hour12: false })}`;
+  } catch (error) {
+    aiRefreshState.textContent = 'CONTROL PLANE OFFLINE';
+    workerList.replaceChildren();
+    const message = document.createElement('p');
+    message.className = 'muted';
+    message.textContent = error.message;
+    workerList.append(message);
+  } finally {
+    aiRefreshInFlight = false;
+  }
+}
+
+function syncAiPolicyControls() {
+  const task = document.querySelector('#ai-task').value;
+  const privacy = document.querySelector('#ai-privacy');
+  const provider = document.querySelector('#ai-provider');
+  const localOnly = ['person-detection', 'face-identity'].includes(task);
+  if (localOnly) privacy.value = 'local-only';
+  privacy.disabled = localOnly;
+  [...provider.options].forEach((option) => {
+    option.disabled = localOnly && option.value === 'external';
+  });
+  if (localOnly && provider.value === 'external') provider.value = '';
+}
+
+dispatchForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  dispatchMessage.textContent = '正在写入持久队列。';
+  const data = Object.fromEntries(new FormData(dispatchForm));
+  if (!data.preferredProvider) delete data.preferredProvider;
+  data.payload = data.taskType === 'event-classification'
+    ? { source: 'synthetic-ui', personCount: 1, durationSeconds: 18, zone: 'entry' }
+    : { source: 'synthetic-ui', frameRef: `synthetic://dashboard/${Date.now()}` };
+  if (data.taskType === 'scene-description') data.budgetMicrousd = 5_000;
+  try {
+    const job = await getJson('/api/ai/jobs', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data)
+    });
+    dispatchMessage.textContent = `${job.taskType} 已入队 // ${job.id.slice(0, 8)}`;
+    await loadAiOverview();
+  } catch (error) {
+    dispatchMessage.textContent = error.message;
+  }
+});
 
 function setCameraForm(cameraId) {
   const camera = settingsData?.cameras?.find((item) => item.id === cameraId);
@@ -533,9 +681,15 @@ downloadButton.addEventListener('click', downloadRecording);
 document.querySelector('#retry-playback').addEventListener('click', () => {
   if (selectedRecording) playRecording(selectedRecording);
 });
+document.querySelector('#refresh-ai').addEventListener('click', loadAiOverview);
+document.querySelector('#ai-task').addEventListener('change', syncAiPolicyControls);
 
 await loadCameras();
 await loadConfig();
 await loadSettings();
 await refreshStatus();
+syncAiPolicyControls();
 setInterval(refreshStatus, 10000);
+setInterval(() => {
+  if (activeView === 'ai') loadAiOverview();
+}, 3000);
